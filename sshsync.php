@@ -263,7 +263,13 @@ class SSHSync
 
         if ($cnt = count($groups[self::FILE_UPDATED])) {
             $this->echoLog("Uploading " . $cnt . " file(s)", false);
-            $this->rsyncFiles($groups[self::FILE_UPDATED], $this->remote_path);
+            if ($cnt < 200) {
+                $this->rsyncFiles($groups[self::FILE_UPDATED], $this->remote_path);
+            }
+            else {
+                $this->echoLog("Too many files to upload, doing full rsync ...", false);
+                $this->rsyncFiles('./', $this->remote_path);
+            }
         }
 
         if (count($groups[self::FILE_DELETED])) {
@@ -271,10 +277,17 @@ class SSHSync
                 return escapeshellarg($file);
             }, $groups[self::FILE_DELETED]);
 
-            $this->echoLog("Deleting " . count($escapedFilesDeleted) . " file(s)", false);
+            $cnt = count($escapedFilesDeleted);
+            $this->echoLog("Deleting " . $cnt . " file(s)", false);
 
-            $cmd = $this->sshCmd() . ' ' . escapeshellarg($this->remote_address) . ' ' . escapeshellcmd('cd ' . escapeshellarg($this->remote_dir) . ' && rm -rf ' . implode(' ', $escapedFilesDeleted));
-            $this->runCmd($cmd);
+            if ($cnt < 200) {
+                $cmd = $this->sshCmd() . ' ' . escapeshellarg($this->remote_address) . ' ' . escapeshellcmd('cd ' . escapeshellarg($this->remote_dir) . ' && rm -rf ' . implode(' ', $escapedFilesDeleted));
+                $this->runCmd($cmd);
+            }
+            else {
+                $this->echoLog("Too many files to delete, doing full rsync ...", false);
+                $this->rsyncFiles('./', $this->remote_path);
+            }
         }
     }
 
