@@ -11,7 +11,7 @@ class SSHSync
     private $local_dir;
     private $ssh_key_path;
     private $rsync_args = '';
-    private $exclude_pattern = '';
+    private $exclude_pattern = [];
     private $rsync_exclude_pattern = '';
     private $remote_address;
     private $remote_dir;
@@ -34,8 +34,8 @@ class SSHSync
             $this->timeout = (int)$options['t'];
         }
         if (isset($options['e'])) {
-            $this->exclude_pattern = $options['e'];
-            $this->rsync_exclude_pattern = '--exclude=' . escapeshellarg($options['e']);
+            $this->exclude_pattern = explode('|', $options['e']);
+            $this->rsync_exclude_pattern = implode(' ', $this->generateRsyncExcludes($this->exclude_pattern));
         }
 
         $this->local_dir = $argv[$argc - 3] ?? '';
@@ -51,6 +51,15 @@ class SSHSync
         $this->remote_dir = rtrim($this->remote_dir, '/');
 
         $this->remote_path = $this->remote_address . ':' . $this->remote_dir . '/';
+    }
+
+    function generateRsyncExcludes($patterns) {
+        $excludes = array();
+        foreach ($patterns as $p) {
+            $excludes[] = "--exclude=" . escapeshellarg($p);
+        }
+    
+        return $excludes;
     }
 
     private function sshCmd()
@@ -208,9 +217,12 @@ class SSHSync
             }
             $event_path = str_replace($this->local_dir . '/', '', $eventFullPath);
 
-            if ($this->exclude_pattern && preg_match($this->exclude_pattern, $event_path)) {
-                //print "SKIP evt: [".implode('+', $events)."] ".$event_path."\n";
-                continue;
+            //print "CHECK evt: [".implode('+', $events)."] ".$event_path."\n";
+            foreach ($this->exclude_pattern as $pattern){
+                if (fnmatch($pattern, $event_path)) {
+                    //print "SKIP evt: [".implode('+', $events)."] ".$event_path."\n";
+                    continue(2);
+                }
             }
 
             $k = md5($event_path);
@@ -239,7 +251,7 @@ class SSHSync
 
         $to = escapeshellarg($to);
 
-        $cmd = 'cd ' . escapeshellarg($this->local_dir) . '/ && rsync -azER -e ' . escapeshellarg($this->sshCmd()) . ' ' . $this->rsync_args . ' ' . $this->rsync_exclude_pattern . ' '.implode(' ', $escapedFrom).' ' . $to;
+        $cmd = 'cd ' . escapeshellarg($this->local_dir.'/') . ' && rsync -azER -e ' . escapeshellarg($this->sshCmd()) . ' ' . $this->rsync_args . ' ' . $this->rsync_exclude_pattern . ' '.implode(' ', $escapedFrom).' ' . $to;
         $this->runCmd($cmd);
     }
 
